@@ -1,15 +1,8 @@
 """
-Anonymous Counseling Telegram Bot — User Reply Keyboard Edition
-==================================================================
-Deploy on Render as Web Service:
-    Build Command:  pip install -r requirements.txt
-    Start Command:  python counseling_bot.py
-
-Environment variables (set on Render):
-    BOT_TOKEN      - Telegram bot token
-    SUPABASE_URL   - Supabase project URL
-    SUPABASE_KEY   - Supabase anon/public key
-    ADMIN_ID       - Your Telegram numeric user ID
+Anonymous Counseling Telegram Bot — Plain Text User Keyboard
+=============================================================
+Deploy on Render as Web Service.
+Environment variables: BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY, ADMIN_ID
 """
 
 import os
@@ -106,11 +99,11 @@ REGISTERED_TEXT = (
     "Use the buttons below to connect with a counselor or get help."
 )
 USER_HELP_TEXT = (
-    "📌 **Commands** (also available via buttons):\n"
-    "/connect – start counseling\n"
-    "/stop_counseling – end current session\n"
-    "/chat_history – view your chat history\n"
-    "/help – show this help"
+    "📌 Commands (available via buttons):\n"
+    "• Help – show this help\n"
+    "• Connect – start counseling\n"
+    "• Stop Counseling – end current session\n"
+    "• Chat History – view your chat history"
 )
 COUNSELOR_WELCOME_TEXT = (
     "Welcome, Counselor.\n"
@@ -127,16 +120,16 @@ USER_ONLY_MSG = "This command is for users only."
 COUNSELOR_ONLY_MSG = "This command is for counselors only."
 
 # ─── REPLY KEYBOARDS ──────────────────────────────────────────────────────
+# Plain text buttons (no slashes)
 USER_MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
-        ["/help", "/connect"],
-        ["/stop_counseling", "/chat_history"]
+        ["Help", "Connect"],
+        ["Stop Counseling", "Chat History"]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
 )
 
-# Admin keyboard (same as before)
 ADMIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         ["📊 Statistics"],
@@ -291,7 +284,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if user.get("counselor_id") is not None:
         await update.message.reply_text(
-            "You are still connected to a counselor. Use /stop_counseling to end the session."
+            "You are still connected to a counselor. Use Stop Counseling button to end the session."
         )
         return ConversationHandler.END
 
@@ -337,6 +330,7 @@ async def counselor_reg_sex(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text(COUNSELOR_WELCOME_TEXT, reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
+# Help handler (triggered by /help command or "Help" button)
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
     if is_counselor(uid):
@@ -344,6 +338,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         await update.message.reply_text(USER_HELP_TEXT)
 
+# Connect handler (triggered by /connect command or "Connect" button)
 async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     uid = update.effective_user.id
     if is_counselor(uid):
@@ -358,7 +353,7 @@ async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
     if user.get("counselor_id"):
         await update.message.reply_text(
-            "You are already connected to a counselor. Use /stop_counseling to end the current session first."
+            "You are already connected to a counselor. Use Stop Counseling button to end the current session first."
         )
         return ConversationHandler.END
 
@@ -420,6 +415,7 @@ async def connect_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     return ConversationHandler.END
 
+# Stop counseling handler (triggered by /stop_counseling command or "Stop Counseling" button)
 async def stop_counseling(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
     if is_counselor(uid):
@@ -429,7 +425,7 @@ async def stop_counseling(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user = get_user(uid)
     cid = user.get("counselor_id")
     if not cid:
-        await update.message.reply_text("You are not currently in a counseling session. Use /connect to start one.")
+        await update.message.reply_text("You are not currently in a counseling session. Use Connect button to start one.")
         return
 
     # Clear connection
@@ -446,6 +442,7 @@ async def stop_counseling(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         logger.warning("Could not notify counselor %s: %s", cid, e)
 
+# Chat history handler (triggered by /chat_history command or "Chat History" button)
 async def chat_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
     if is_counselor(uid):
@@ -471,7 +468,7 @@ async def chat_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         reply = "...(truncated)\n" + reply[-4000:]
     await update.message.reply_text(reply)
 
-# ─── COUNSELOR COMMANDS ───────────────────────────────────────────────────
+# ─── COUNSELOR COMMANDS (unchanged) ───────────────────────────────────────
 async def counselor_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
     if not is_counselor(uid):
@@ -517,7 +514,6 @@ async def counselor_disconnect(update: Update, context: ContextTypes.DEFAULT_TYP
     if not user_id:
         await update.message.reply_text("You are not currently connected to any user.")
         return
-    # Disconnect
     update_counselor(uid, {"available": True, "manually_busy": False, "current_user_id": None})
     update_user(int(user_id), {"counselor_id": None})
     await update.message.reply_text("Session ended. You are now available for new users.")
@@ -549,7 +545,7 @@ async def set_busy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "(Any active session continues normally.)"
     )
 
-# ─── ADMIN COMMANDS WITH REPLY KEYBOARD ───────────────────────────────────
+# ─── ADMIN COMMANDS (unchanged) ───────────────────────────────────────────
 def is_admin(uid: int) -> bool:
     return uid == ADMIN_ID
 
@@ -558,7 +554,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not is_admin(uid):
         await update.message.reply_text("⛔ You are not authorised as admin.")
         return
-
     await update.message.reply_text(
         "🛠️ Admin Control Panel\nSelect an action from the buttons below.",
         reply_markup=ADMIN_KEYBOARD
@@ -569,14 +564,12 @@ async def admin_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
         return
-
     users_count = supabase.table("users").select("user_id", count="exact").execute().count
     counselors_count = supabase.table("counselors").select("user_id", count="exact").execute().count
     active_sessions = supabase.table("counselors").select("user_id") \
         .eq("available", False) \
         .not_.is_("current_user_id", "null") \
         .execute().count
-
     await update.message.reply_text(
         f"📊 Statistics\n"
         f"👤 Users: {users_count}\n"
@@ -616,7 +609,6 @@ async def admin_list_counselors(update: Update, context: ContextTypes.DEFAULT_TY
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
         return
-
     resp = supabase.table("counselors").select("user_id, sex, available, current_user_id").execute()
     if not resp.data:
         await update.message.reply_text("No counselors found.")
@@ -765,6 +757,12 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if is_admin(sender_id) and text in ["📊 Statistics", "➕ Add Counselor", "➖ Remove Counselor", "📋 List Counselors", "🔄 Reset User Data", "📨 Broadcast Message", "❌ Close Admin Panel"]:
         return
 
+    # Ignore user keyboard button presses – they are handled by dedicated handlers
+    # but we must not forward them as messages.
+    if not is_counselor(sender_id) and not is_admin(sender_id):
+        if text in ["Help", "Connect", "Stop Counseling", "Chat History"]:
+            return
+
     # Counselor → User
     if is_counselor(sender_id):
         rec = get_counselor(sender_id)
@@ -792,7 +790,7 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     cid = user.get("counselor_id")
     if not cid:
-        await update.message.reply_text("You are not connected to a counselor. Use /connect to start a session.")
+        await update.message.reply_text("You are not connected to a counselor. Use Connect button to start a session.")
         return
     try:
         await context.bot.send_message(chat_id=int(cid), text=text)
@@ -808,6 +806,7 @@ async def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
 
+    # Conversation handlers
     reg_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -827,7 +826,9 @@ async def main():
     app.add_handler(reg_handler)
     app.add_handler(connect_handler)
 
+    # Command handlers (still support direct commands)
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("connect", connect))
     app.add_handler(CommandHandler("stop_counseling", stop_counseling))
     app.add_handler(CommandHandler("chat_history", chat_history))
     app.add_handler(CommandHandler("status", counselor_status))
@@ -835,6 +836,12 @@ async def main():
     app.add_handler(CommandHandler("disconnect", counselor_disconnect))
     app.add_handler(CommandHandler("set_available", set_available))
     app.add_handler(CommandHandler("set_busy", set_busy))
+
+    # User keyboard buttons mapped to same handlers as commands
+    app.add_handler(MessageHandler(filters.Text("Help"), help_command))
+    app.add_handler(MessageHandler(filters.Text("Connect"), connect))
+    app.add_handler(MessageHandler(filters.Text("Stop Counseling"), stop_counseling))
+    app.add_handler(MessageHandler(filters.Text("Chat History"), chat_history))
 
     # Admin
     app.add_handler(CommandHandler("admin", admin_panel))
@@ -847,6 +854,7 @@ async def main():
     app.add_handler(MessageHandler(filters.Text("❌ Close Admin Panel"), admin_close_panel))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_message_handler), group=1)
 
+    # Catch‑all forwarder (lowest priority)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, forward_message))
 
     logger.info("Bot is running...")
