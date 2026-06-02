@@ -557,7 +557,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         [InlineKeyboardButton("❌ Close", callback_data="admin_close")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🛠️ **Admin Control Panel**\nSelect an action:", reply_markup=reply_markup)
+    await update.message.reply_text("🛠️ Admin Control Panel\nSelect an action:", reply_markup=reply_markup)
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -574,7 +574,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         counselors_count = supabase.table("counselors").select("user_id", count="exact").execute().count
         active_sessions = supabase.table("counselors").select("user_id").eq("available", False).is_("current_user_id", "not.null").execute().count
         await query.edit_message_text(
-            f"📊 **Statistics**\n"
+            f"📊 Statistics\n"
             f"👤 Users: {users_count}\n"
             f"💬 Counselors: {counselors_count}\n"
             f"🔗 Active sessions: {active_sessions}",
@@ -584,7 +584,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif data == "admin_add_counselor":
         context.user_data["admin_action"] = "add_counselor"
         await query.edit_message_text(
-            "➕ **Add a new counselor**\n\n"
+            "➕ Add a new counselor\n\n"
             "Send the counselor's Telegram numeric user ID.\n"
             "Example: `439115108`\n\n"
             "Then send their gender: `male` or `female`.\n"
@@ -594,7 +594,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif data == "admin_remove_counselor":
         context.user_data["admin_action"] = "remove_counselor"
         await query.edit_message_text(
-            "➖ **Remove a counselor**\n\n"
+            "➖ Remove a counselor\n\n"
             "Send the Telegram numeric user ID of the counselor to remove."
         )
 
@@ -609,13 +609,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if c["current_user_id"]:
                 status += f" (helping {c['current_user_id']})"
             lines.append(f"`{c['user_id']}` – {c['sex'] or 'no sex'} – {status}")
-        msg = "📋 **Counselors:**\n" + "\n".join(lines)
+        msg = "📋 Counselors:\n" + "\n".join(lines)
         await query.edit_message_text(msg, parse_mode="Markdown")
 
     elif data == "admin_reset_user":
         context.user_data["admin_action"] = "reset_user"
         await query.edit_message_text(
-            "🔄 **Reset user data**\n\n"
+            "🔄 Reset user data\n\n"
             "Send the Telegram numeric user ID of the user to reset.\n"
             "Their registration, topic, and chat history will be deleted."
         )
@@ -623,8 +623,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif data == "admin_broadcast":
         context.user_data["admin_action"] = "broadcast"
         await query.edit_message_text(
-            "📨 **Broadcast message**\n\n"
-            "Send the message you want to broadcast to **all users**.\n"
+            "📨 Broadcast message\n\n"
+            "Send the message you want to broadcast to all users.\n"
             "Use /cancel to abort."
         )
 
@@ -700,7 +700,7 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         fail = 0
         for user in users.data:
             try:
-                await context.bot.send_message(chat_id=int(user["user_id"]), text=f"📢 **Broadcast from admin:**\n\n{text}")
+                await context.bot.send_message(chat_id=int(user["user_id"]), text=f"📢 Broadcast from admin:\n\n{text}")
                 success += 1
             except Exception as e:
                 logger.warning(f"Broadcast failed to {user['user_id']}: {e}")
