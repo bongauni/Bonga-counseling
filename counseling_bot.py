@@ -39,8 +39,9 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ─── COUNSELOR LIST (Telegram numeric IDs) ────────────────────────────────
 COUNSELOR_IDS = [
-    439115108,      # female counselor
-    2034041406,     # male counselor
+    439115108,      
+    2034041406,     # female counselor
+    6989476938,     # male counselor
     # Add more as needed
 ]
 
