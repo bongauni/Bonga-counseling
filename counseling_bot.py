@@ -56,7 +56,7 @@ COUNSELOR_IDS = [
 
 # ─── LOGGING ──────────────────────────────────────────────────────────────
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
@@ -369,7 +369,7 @@ async def connect_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     user = get_user(uid)
     user_sex = user.get("sex")
     if not user_sex:
-        await update.message.reply_text("Your sex was not recorded. Please /start again.")
+        await update.message.reply_text("Your sex was not recorded. Please /start again.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
     cid = find_available_counselor(user_sex)
@@ -765,7 +765,7 @@ async def main():
     # Build Telegram application
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Conversation handlers
+    # Conversation handlers (must be added first)
     reg_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -785,24 +785,22 @@ async def main():
     app.add_handler(reg_handler)
     app.add_handler(connect_handler)
 
-    # Standard commands
+    # Command handlers (non‑conversation)
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("stop_counseling", stop_counseling))
     app.add_handler(CommandHandler("chat_history", chat_history))
-
-    # Counselor commands
     app.add_handler(CommandHandler("status", counselor_status))
     app.add_handler(CommandHandler("history", counselor_history))
     app.add_handler(CommandHandler("disconnect", counselor_disconnect))
     app.add_handler(CommandHandler("set_available", set_available))
     app.add_handler(CommandHandler("set_busy", set_busy))
-
-    # Admin commands
     app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CallbackQueryHandler(admin_callback))
+
+    # Admin text input handler – only runs if admin_action is set, otherwise passes
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_message_handler), group=1)
 
-    # Message forwarding (non-command text) – lowest priority
+    # Catch‑all message forwarder (lowest priority – runs after all other handlers)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, forward_message))
 
     logger.info("Bot is running...")
