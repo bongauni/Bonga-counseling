@@ -1,17 +1,15 @@
 """
-Anonymous Counseling Telegram Bot — Web Service Edition
-========================================================
-Requirements:
-    pip install python-telegram-bot==20.7 supabase aiohttp
+Anonymous Counseling Telegram Bot — Full Edition with Admin Panel
+==================================================================
+Deploy on Render as Web Service:
+    Build Command:  pip install -r requirements.txt
+    Start Command:  python counseling_bot.py
 
 Environment variables (set on Render):
     BOT_TOKEN      - Telegram bot token
     SUPABASE_URL   - Supabase project URL
     SUPABASE_KEY   - Supabase anon/public key
-
-Deploy as Web Service on Render:
-    Build Command:  pip install -r requirements.txt
-    Start Command:  python counseling_bot.py
+    ADMIN_ID       - Your Telegram numeric user ID
 """
 
 import os
@@ -19,10 +17,21 @@ import asyncio
 import logging
 from datetime import datetime
 
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import (
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import (
-    Application, CommandHandler, ContextTypes,
-    ConversationHandler, MessageHandler, filters,
+    Application,
+    CommandHandler,
+    ContextTypes,
+    ConversationHandler,
+    MessageHandler,
+    filters,
+    CallbackQueryHandler,
 )
 from supabase import create_client, Client
 from aiohttp import web
@@ -31,18 +40,18 @@ from aiohttp import web
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 if not all([BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY]):
     raise ValueError("Missing environment variables: BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ─── COUNSELOR LIST (Telegram numeric IDs) ────────────────────────────────
+# ─── COUNSELOR LIST (hardcoded – can also be managed via admin panel) ──────
 COUNSELOR_IDS = [
-    439115108,      
-    2034041406,     # female counselor
-    6989476938,     # male counselor
-    # Add more as needed
+    439115108,      # female counselor
+    2034041406,     # male counselor
+    # Add more as needed – they will be auto‑added to Supabase on first /start
 ]
 
 # ─── LOGGING ──────────────────────────────────────────────────────────────
@@ -134,7 +143,6 @@ def is_counselor(uid: int) -> bool:
     return uid in COUNSELOR_IDS
 
 def get_user(uid: int) -> dict:
-    """Fetch user record; create if missing."""
     resp = supabase.table("users").select("*").eq("user_id", str(uid)).execute()
     if resp.data:
         return resp.data[0]
@@ -153,7 +161,6 @@ def update_user(uid: int, updates: dict):
     supabase.table("users").update(updates).eq("user_id", str(uid)).execute()
 
 def get_counselor(cid: int) -> dict:
-    """Fetch counselor record; create if missing (only for IDs in COUNSELOR_IDS)."""
     if not is_counselor(cid):
         return None
     resp = supabase.table("counselors").select("*").eq("user_id", str(cid)).execute()
@@ -173,7 +180,6 @@ def update_counselor(cid: int, updates: dict):
     supabase.table("counselors").update(updates).eq("user_id", str(cid)).execute()
 
 def find_available_counselor(user_sex: str) -> int | None:
-    """Return first counselor ID that matches user's sex, is available, not manually busy, and free."""
     if not user_sex:
         return None
     norm_sex = user_sex.strip().lower()
@@ -244,7 +250,6 @@ async def run_health_server():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     logger.info(f"Health check server running on port {port}")
-    # Keep the server alive forever
     await asyncio.Event().wait()
 
 # ─── TELEGRAM HANDLERS ────────────────────────────────────────────────────
@@ -532,6 +537,184 @@ async def set_busy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "(Any active session continues normally.)"
     )
 
+# ─── ADMIN COMMANDS ───────────────────────────────────────────────────────
+def is_admin(uid: int) -> bool:
+    return uid == ADMIN_ID
+
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        await update.message.reply_text("⛔ You are not authorised as admin.")
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("📊 Statistics", callback_data="admin_stats")],
+        [InlineKeyboardButton("➕ Add Counselor", callback_data="admin_add_counselor")],
+        [InlineKeyboardButton("➖ Remove Counselor", callback_data="admin_remove_counselor")],
+        [InlineKeyboardButton("📋 List Counselors", callback_data="admin_list_counselors")],
+        [InlineKeyboardButton("🔄 Reset User Data", callback_data="admin_reset_user")],
+        [InlineKeyboardButton("📨 Broadcast Message", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("❌ Close", callback_data="admin_close")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("🛠️ **Admin Control Panel**\nSelect an action:", reply_markup=reply_markup)
+
+async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    uid = query.from_user.id
+    if not is_admin(uid):
+        await query.edit_message_text("⛔ Unauthorised.")
+        return
+
+    data = query.data
+
+    if data == "admin_stats":
+        users_count = supabase.table("users").select("user_id", count="exact").execute().count
+        counselors_count = supabase.table("counselors").select("user_id", count="exact").execute().count
+        active_sessions = supabase.table("counselors").select("user_id").eq("available", False).is_("current_user_id", "not.null").execute().count
+        await query.edit_message_text(
+            f"📊 **Statistics**\n"
+            f"👤 Users: {users_count}\n"
+            f"💬 Counselors: {counselors_count}\n"
+            f"🔗 Active sessions: {active_sessions}",
+            parse_mode="Markdown"
+        )
+
+    elif data == "admin_add_counselor":
+        context.user_data["admin_action"] = "add_counselor"
+        await query.edit_message_text(
+            "➕ **Add a new counselor**\n\n"
+            "Send the counselor's Telegram numeric user ID.\n"
+            "Example: `439115108`\n\n"
+            "Then send their gender: `male` or `female`.\n"
+            "You can cancel with /cancel."
+        )
+
+    elif data == "admin_remove_counselor":
+        context.user_data["admin_action"] = "remove_counselor"
+        await query.edit_message_text(
+            "➖ **Remove a counselor**\n\n"
+            "Send the Telegram numeric user ID of the counselor to remove."
+        )
+
+    elif data == "admin_list_counselors":
+        resp = supabase.table("counselors").select("user_id, sex, available, current_user_id").execute()
+        if not resp.data:
+            await query.edit_message_text("No counselors found.")
+            return
+        lines = []
+        for c in resp.data:
+            status = "🟢 available" if c["available"] else "🔴 busy"
+            if c["current_user_id"]:
+                status += f" (helping {c['current_user_id']})"
+            lines.append(f"`{c['user_id']}` – {c['sex'] or 'no sex'} – {status}")
+        msg = "📋 **Counselors:**\n" + "\n".join(lines)
+        await query.edit_message_text(msg, parse_mode="Markdown")
+
+    elif data == "admin_reset_user":
+        context.user_data["admin_action"] = "reset_user"
+        await query.edit_message_text(
+            "🔄 **Reset user data**\n\n"
+            "Send the Telegram numeric user ID of the user to reset.\n"
+            "Their registration, topic, and chat history will be deleted."
+        )
+
+    elif data == "admin_broadcast":
+        context.user_data["admin_action"] = "broadcast"
+        await query.edit_message_text(
+            "📨 **Broadcast message**\n\n"
+            "Send the message you want to broadcast to **all users**.\n"
+            "Use /cancel to abort."
+        )
+
+    elif data == "admin_close":
+        await query.edit_message_text("Admin panel closed.")
+
+async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return
+    action = context.user_data.get("admin_action")
+    if not action:
+        return
+    text = update.message.text.strip()
+
+    if action == "add_counselor":
+        if "pending_counselor_id" not in context.user_data:
+            if not text.isdigit():
+                await update.message.reply_text("❌ Invalid ID. Send a numeric user ID.")
+                return
+            context.user_data["pending_counselor_id"] = text
+            await update.message.reply_text("Now send the gender: `male` or `female`")
+            return
+        else:
+            gender = text.lower()
+            if gender not in ["male", "female"]:
+                await update.message.reply_text("❌ Gender must be 'male' or 'female'.")
+                return
+            cid = context.user_data.pop("pending_counselor_id")
+            existing = supabase.table("counselors").select("user_id").eq("user_id", cid).execute()
+            if existing.data:
+                supabase.table("counselors").update({"sex": gender}).eq("user_id", cid).execute()
+                await update.message.reply_text(f"✅ Counselor `{cid}` updated to gender `{gender}`.")
+            else:
+                supabase.table("counselors").insert({
+                    "user_id": cid,
+                    "sex": gender,
+                    "available": True,
+                    "manually_busy": False,
+                    "current_user_id": None,
+                }).execute()
+                await update.message.reply_text(f"✅ Counselor `{cid}` added with gender `{gender}`.\n⚠️ Note: Hardcoded COUNSELOR_IDS in code does not auto-update. Restart or add manually to the list.")
+            del context.user_data["admin_action"]
+
+    elif action == "remove_counselor":
+        if not text.isdigit():
+            await update.message.reply_text("❌ Send a valid numeric user ID.")
+            return
+        cid = text
+        result = supabase.table("counselors").delete().eq("user_id", cid).execute()
+        if result.data:
+            await update.message.reply_text(f"✅ Counselor `{cid}` removed from database.")
+        else:
+            await update.message.reply_text(f"❌ Counselor `{cid}` not found.")
+        del context.user_data["admin_action"]
+
+    elif action == "reset_user":
+        if not text.isdigit():
+            await update.message.reply_text("❌ Send a valid numeric user ID.")
+            return
+        uid_reset = text
+        supabase.table("messages").delete().eq("user_id", uid_reset).execute()
+        result = supabase.table("users").delete().eq("user_id", uid_reset).execute()
+        if result.data:
+            await update.message.reply_text(f"✅ User `{uid_reset}` and all their data deleted.")
+        else:
+            await update.message.reply_text(f"❌ User `{uid_reset}` not found.")
+        del context.user_data["admin_action"]
+
+    elif action == "broadcast":
+        users = supabase.table("users").select("user_id").execute()
+        success = 0
+        fail = 0
+        for user in users.data:
+            try:
+                await context.bot.send_message(chat_id=int(user["user_id"]), text=f"📢 **Broadcast from admin:**\n\n{text}")
+                success += 1
+            except Exception as e:
+                logger.warning(f"Broadcast failed to {user['user_id']}: {e}")
+                fail += 1
+        await update.message.reply_text(f"✅ Broadcast sent to {success} users. Failed: {fail}")
+        del context.user_data["admin_action"]
+
+    else:
+        del context.user_data["admin_action"]
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Operation cancelled.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
 # ─── MESSAGE FORWARDING ───────────────────────────────────────────────────
 async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     sender_id = update.effective_user.id
@@ -574,10 +757,6 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         logger.error("Forward user->counselor error: %s", e)
         await update.message.reply_text("⚠️ Could not deliver your message to the counselor.")
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Operation cancelled.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
 # ─── MAIN ─────────────────────────────────────────────────────────────────
 async def main():
     # Start health check server (keeps Render Web Service alive)
@@ -618,17 +797,21 @@ async def main():
     app.add_handler(CommandHandler("set_available", set_available))
     app.add_handler(CommandHandler("set_busy", set_busy))
 
-    # Message forwarding (non-command text)
+    # Admin commands
+    app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CallbackQueryHandler(admin_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_message_handler), group=1)
+
+    # Message forwarding (non-command text) – lowest priority
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, forward_message))
 
     logger.info("Bot is running...")
 
-    # Start polling
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
 
-    # Keep the bot alive indefinitely
+    # Keep alive
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
