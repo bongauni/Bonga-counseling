@@ -21,8 +21,6 @@ from telegram import (
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
 )
 from telegram.ext import (
     Application,
@@ -31,7 +29,6 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     filters,
-    CallbackQueryHandler,
 )
 from supabase import create_client, Client
 from aiohttp import web
@@ -575,9 +572,10 @@ async def admin_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Get counts from Supabase
     users_count = supabase.table("users").select("user_id", count="exact").execute().count
     counselors_count = supabase.table("counselors").select("user_id", count="exact").execute().count
+    # Correct filter for active sessions: available = False and current_user_id is not null
     active_sessions = supabase.table("counselors").select("user_id") \
         .eq("available", False) \
-        .is_("current_user_id", "not.null") \
+        .not_.is_("current_user_id", "null") \
         .execute().count
 
     await update.message.reply_text(
@@ -762,6 +760,11 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         del context.user_data["admin_action"]
 
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Operation cancelled.", reply_markup=ReplyKeyboardRemove())
+    context.user_data.pop("admin_action", None)
+    return ConversationHandler.END
+
 # ─── MESSAGE FORWARDING ───────────────────────────────────────────────────
 async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     sender_id = update.effective_user.id
@@ -807,12 +810,6 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         logger.error("Forward user->counselor error: %s", e)
         await update.message.reply_text("⚠️ Could not deliver your message to the counselor.")
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Operation cancelled.", reply_markup=ReplyKeyboardRemove())
-    # Clear any pending admin action
-    context.user_data.pop("admin_action", None)
-    return ConversationHandler.END
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────
 async def main():
