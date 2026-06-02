@@ -1,5 +1,5 @@
 """
-Anonymous Counseling Telegram Bot — Admin Reply Keyboard Edition
+Anonymous Counseling Telegram Bot — User Reply Keyboard Edition
 ==================================================================
 Deploy on Render as Web Service:
     Build Command:  pip install -r requirements.txt
@@ -98,26 +98,19 @@ STRINGS = {
 START_TEXT = (
     "Hello beloved user, this is the counseling team's anonymous counseling service.\n"
     "We hope we can help you in whatever you may need.\n\n"
-    "Use the /help command to understand how to use the bot\n"
-    "Use the /connect command to start getting counseling\n\n"
+    "Use the buttons below to navigate.\n\n"
     "Always remember God loves you and so do we."
 )
 REGISTERED_TEXT = (
     "Congratulations!! You have registered to the bot.\n"
-    "Use the /help command to learn how to use the bot\n"
-    "Use the /connect command to connect with a counselor"
+    "Use the buttons below to connect with a counselor or get help."
 )
 USER_HELP_TEXT = (
-    "Commands: \n"
-    "/connect: connect with a counselor\n"
-    "/stop_counseling: stop counseling with your counselor\n"
-    "/chat_history: get a history of your chat with the counselor\n\n"
-    "Usage: \n"
-    "To start getting anonymous counseling, use the /connect command\n"
-    "After connecting with a counselor, every message you send to the bot will be sent to the counselor. "
-    "The bot will also send you the messages sent from the counselor\n"
-    "Use the /chat_history command to get a history of your chat. "
-    "You can add a limit to the command to see more messages like so: /chat_history {limit}"
+    "📌 **Commands** (also available via buttons):\n"
+    "/connect – start counseling\n"
+    "/stop_counseling – end current session\n"
+    "/chat_history – view your chat history\n"
+    "/help – show this help"
 )
 COUNSELOR_WELCOME_TEXT = (
     "Welcome, Counselor.\n"
@@ -133,8 +126,30 @@ COUNSELOR_WELCOME_TEXT = (
 USER_ONLY_MSG = "This command is for users only."
 COUNSELOR_ONLY_MSG = "This command is for counselors only."
 
-# ─── SUPABASE HELPER FUNCTIONS ────────────────────────────────────────────
+# ─── REPLY KEYBOARDS ──────────────────────────────────────────────────────
+USER_MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        ["/help", "/connect"],
+        ["/stop_counseling", "/chat_history"]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False
+)
 
+# Admin keyboard (same as before)
+ADMIN_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        ["📊 Statistics"],
+        ["➕ Add Counselor", "➖ Remove Counselor"],
+        ["📋 List Counselors"],
+        ["🔄 Reset User Data", "📨 Broadcast Message"],
+        ["❌ Close Admin Panel"]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False
+)
+
+# ─── SUPABASE HELPER FUNCTIONS ────────────────────────────────────────────
 def is_counselor(uid: int) -> bool:
     return uid in COUNSELOR_IDS
 
@@ -272,7 +287,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     # User path
     user = get_user(uid)
-    await update.message.reply_text(START_TEXT, reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(START_TEXT, reply_markup=USER_MAIN_KEYBOARD)
 
     if user.get("counselor_id") is not None:
         await update.message.reply_text(
@@ -284,7 +299,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text(REGISTERED_TEXT)
         return ConversationHandler.END
 
-    # Start registration
+    # Start registration – remove keyboard temporarily
     await update.message.reply_text(
         "Before you can use the bot, you have to answer the following questions:\n\nWhat is your sex?",
         reply_markup=ReplyKeyboardMarkup(
@@ -311,7 +326,7 @@ async def reg_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_counselor(uid):
         return ConversationHandler.END
     update_user(uid, {"language": update.message.text, "registered": True})
-    await update.message.reply_text(REGISTERED_TEXT, reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(REGISTERED_TEXT, reply_markup=USER_MAIN_KEYBOARD)
     return ConversationHandler.END
 
 async def counselor_reg_sex(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -347,6 +362,7 @@ async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return ConversationHandler.END
 
+    # Remove main keyboard while choosing topic
     await update.message.reply_text(
         "Please choose your main concern so we can connect you with the best counselor for you.\n"
         "እባክዎ ዋና ምክር የፈለጉበትን ጉዳይ ይምረጡ — ይህን የምንጠይቀው ከትክክልኛ አማካሪ ጋር ለማገናኘት እንዲረዳን ነው፡፡",
@@ -365,14 +381,14 @@ async def connect_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     user = get_user(uid)
     user_sex = user.get("sex")
     if not user_sex:
-        await update.message.reply_text("Your sex was not recorded. Please /start again.", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Your sex was not recorded. Please /start again.", reply_markup=USER_MAIN_KEYBOARD)
         return ConversationHandler.END
 
     cid = find_available_counselor(user_sex)
     if cid is None:
         await update.message.reply_text(
             "No counselor of your gender is available right now. Please try again later.",
-            reply_markup=ReplyKeyboardRemove(),
+            reply_markup=USER_MAIN_KEYBOARD,
         )
         return ConversationHandler.END
 
@@ -382,7 +398,7 @@ async def connect_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     await update.message.reply_text(
         user_str(uid, "matched"),
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=USER_MAIN_KEYBOARD,
     )
 
     # Notify counselor
@@ -420,7 +436,7 @@ async def stop_counseling(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     update_user(uid, {"counselor_id": None})
     update_counselor(int(cid), {"available": True, "manually_busy": False, "current_user_id": None})
 
-    await update.message.reply_text(user_str(uid, "stopped"))
+    await update.message.reply_text(user_str(uid, "stopped"), reply_markup=USER_MAIN_KEYBOARD)
 
     try:
         await context.bot.send_message(
@@ -537,21 +553,7 @@ async def set_busy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 def is_admin(uid: int) -> bool:
     return uid == ADMIN_ID
 
-# Reply keyboard layout for admin
-ADMIN_KEYBOARD = ReplyKeyboardMarkup(
-    [
-        ["📊 Statistics"],
-        ["➕ Add Counselor", "➖ Remove Counselor"],
-        ["📋 List Counselors"],
-        ["🔄 Reset User Data", "📨 Broadcast Message"],
-        ["❌ Close Admin Panel"]
-    ],
-    resize_keyboard=True,
-    one_time_keyboard=False
-)
-
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show admin reply keyboard (persistent buttons)."""
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ You are not authorised as admin.")
@@ -563,16 +565,13 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
 async def admin_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show statistics (users, counselors, active sessions)."""
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
         return
 
-    # Get counts from Supabase
     users_count = supabase.table("users").select("user_id", count="exact").execute().count
     counselors_count = supabase.table("counselors").select("user_id", count="exact").execute().count
-    # Correct filter for active sessions: available = False and current_user_id is not null
     active_sessions = supabase.table("counselors").select("user_id") \
         .eq("available", False) \
         .not_.is_("current_user_id", "null") \
@@ -586,7 +585,6 @@ async def admin_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
 
 async def admin_add_counselor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start add counselor flow."""
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
@@ -602,7 +600,6 @@ async def admin_add_counselor_start(update: Update, context: ContextTypes.DEFAUL
     )
 
 async def admin_remove_counselor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start remove counselor flow."""
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
@@ -615,7 +612,6 @@ async def admin_remove_counselor_start(update: Update, context: ContextTypes.DEF
     )
 
 async def admin_list_counselors(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """List all counselors with their status."""
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
@@ -635,7 +631,6 @@ async def admin_list_counselors(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(msg)
 
 async def admin_reset_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start reset user data flow."""
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
@@ -649,7 +644,6 @@ async def admin_reset_user_start(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start broadcast flow."""
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
@@ -663,7 +657,6 @@ async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 async def admin_close_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Close admin panel (remove keyboard)."""
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Unauthorised.")
@@ -671,7 +664,6 @@ async def admin_close_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text("Admin panel closed.", reply_markup=ReplyKeyboardRemove())
 
 async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle text input during admin flows (add/remove/reset/broadcast)."""
     uid = update.effective_user.id
     if not is_admin(uid):
         return
@@ -712,7 +704,6 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
                     f"Restart or add manually to the list if needed."
                 )
             del context.user_data["admin_action"]
-            # Show admin panel again
             await admin_panel(update, context)
 
     elif action == "remove_counselor":
@@ -761,7 +752,7 @@ async def admin_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         del context.user_data["admin_action"]
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Operation cancelled.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Operation cancelled.", reply_markup=USER_MAIN_KEYBOARD)
     context.user_data.pop("admin_action", None)
     return ConversationHandler.END
 
@@ -770,7 +761,7 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     sender_id = update.effective_user.id
     text = update.message.text
 
-    # Ignore admin panel button presses (they are handled by separate handlers)
+    # Ignore admin panel button presses
     if is_admin(sender_id) and text in ["📊 Statistics", "➕ Add Counselor", "➖ Remove Counselor", "📋 List Counselors", "🔄 Reset User Data", "📨 Broadcast Message", "❌ Close Admin Panel"]:
         return
 
@@ -813,13 +804,10 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────
 async def main():
-    # Start health check server (keeps Render Web Service alive)
     asyncio.create_task(run_health_server())
 
-    # Build Telegram application
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Conversation handlers (must be added first)
     reg_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -839,7 +827,6 @@ async def main():
     app.add_handler(reg_handler)
     app.add_handler(connect_handler)
 
-    # Command handlers
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("stop_counseling", stop_counseling))
     app.add_handler(CommandHandler("chat_history", chat_history))
@@ -849,9 +836,8 @@ async def main():
     app.add_handler(CommandHandler("set_available", set_available))
     app.add_handler(CommandHandler("set_busy", set_busy))
 
-    # Admin command and reply keyboard handlers
+    # Admin
     app.add_handler(CommandHandler("admin", admin_panel))
-    # Buttons on the reply keyboard
     app.add_handler(MessageHandler(filters.Text("📊 Statistics"), admin_statistics))
     app.add_handler(MessageHandler(filters.Text("➕ Add Counselor"), admin_add_counselor_start))
     app.add_handler(MessageHandler(filters.Text("➖ Remove Counselor"), admin_remove_counselor_start))
@@ -859,11 +845,8 @@ async def main():
     app.add_handler(MessageHandler(filters.Text("🔄 Reset User Data"), admin_reset_user_start))
     app.add_handler(MessageHandler(filters.Text("📨 Broadcast Message"), admin_broadcast_start))
     app.add_handler(MessageHandler(filters.Text("❌ Close Admin Panel"), admin_close_panel))
-
-    # Admin text input handler (for multi-step flows)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_message_handler), group=1)
 
-    # Catch‑all message forwarder (lowest priority)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, forward_message))
 
     logger.info("Bot is running...")
@@ -871,7 +854,6 @@ async def main():
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
