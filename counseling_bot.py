@@ -27,10 +27,18 @@ from supabase import create_client, Client
 from aiohttp import web
 
 # ─── ENVIRONMENT ──────────────────────────────────────────────────────────
+# ─── ENVIRONMENT ──────────────────────────────────────────────────────────
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+# Support multiple admins: comma‑separated list in ADMIN_IDS (e.g., "123,456")
+# Also support single ADMIN_ID for backward compatibility
+admin_ids_str = os.getenv("ADMIN_IDS", "")
+if admin_ids_str:
+    ADMIN_IDS = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip().isdigit()]
+else:
+    single_admin = os.getenv("ADMIN_ID")
+    ADMIN_IDS = [int(single_admin)] if single_admin and single_admin.isdigit() else []
 
 if not all([BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY]):
     raise ValueError("Missing environment variables: BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY")
@@ -39,8 +47,9 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ─── COUNSELOR LIST (hardcoded – can also be managed via admin panel) ──────
 COUNSELOR_IDS = [
-    439115108,      # female counselor
-    2034041406,     # male counselor
+    439115108,      
+    2034041406,     # female counselor
+    6989476938,     # male counselor
 ]
 
 # ─── LOGGING ──────────────────────────────────────────────────────────────
@@ -547,7 +556,7 @@ async def set_busy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ─── ADMIN COMMANDS (unchanged) ───────────────────────────────────────────
 def is_admin(uid: int) -> bool:
-    return uid == ADMIN_ID
+    return uid in ADMIN_IDS
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
