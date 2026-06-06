@@ -62,6 +62,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 COUNSELOR_IDS: list[int] = [
     439115108,
     2034041406,
+    6989476938,
     # Add additional counselor IDs here
 ]
 
@@ -229,22 +230,25 @@ def _delete_counselor(cid: str) -> dict | None:
     return res.data[0] if res.data else None
 
 def _find_available_counselor(user_sex: str) -> str | None:
-    sex_val = user_sex.capitalize() if user_sex else ""
+    sex_val = user_sex.lower() if user_sex else ""
+    logger.info("Searching for available counselor. User sex input: %s, normalized: %s", user_sex, sex_val)
     res = (
         supabase.table("counselors")
-        .select("user_id")
+        .select("user_id, sex, available, manually_busy, current_user_id")
         .eq("available", True)
         .eq("manually_busy", False)
         .is_("current_user_id", "null")
         .eq("sex", sex_val)
         .execute()
     )
+    logger.info("Supabase available counselor query result: %s", res.data)
     if res.data:
         return res.data[0]["user_id"]
     return None
 
 def _match_user_with_counselor(user_id: str, user_sex: str) -> str | None:
     cid = _find_available_counselor(user_sex)
+    logger.info("Matching user_id=%s with counselor_id=%s", user_id, cid)
     if cid:
         claim = (
             supabase.table("counselors")
@@ -253,8 +257,10 @@ def _match_user_with_counselor(user_id: str, user_sex: str) -> str | None:
             .is_("current_user_id", "null")
             .execute()
         )
+        logger.info("Claim counselor result: %s", claim.data)
         if claim.data:
-            supabase.table("users").update({"counselor_id": cid}).eq("user_id", user_id).execute()
+            user_update = supabase.table("users").update({"counselor_id": cid}).eq("user_id", user_id).execute()
+            logger.info("Update user with counselor result: %s", user_update.data)
             return cid
     return None
 
@@ -498,7 +504,7 @@ async def reg_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return REG_LANG
 
     user_data = {
-        "sex": context.user_data["reg_sex"],
+        "sex": context.user_data["reg_sex"].lower(),
         "language": text,
         "registered": True,
         "counselor_id": None,
@@ -525,7 +531,7 @@ async def counselor_reg_sex(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return COUNSELOR_SEX
 
     c_data = {
-        "sex": text,
+        "sex": text.lower(),
         "available": True,
         "manually_busy": False,
         "current_user_id": None
@@ -618,7 +624,7 @@ async def connect_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     await update.message.reply_text(matched_text, reply_markup=USER_KEYBOARD)
 
     # Notify counselor
-    sex_label = user.get("sex") or "Not specified"
+    sex_label = (user.get("sex") or "Not specified").capitalize()
     lang_label = user.get("language") or "Not specified"
     topic_label = topic or "Not specified"
 
@@ -745,7 +751,7 @@ async def counselor_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if c.get("current_user_id"):
         user = await get_user_db(c["current_user_id"])
         topic = user.get("topic") if user else "Unknown"
-        sex = user.get("sex") if user else "Unknown"
+        sex = (user.get("sex") or "Unknown").capitalize()
         lang = user.get("language") if user else "Unknown"
         msg = f"You are currently connected to a user.\nTopic: {topic}\nSex: {sex}\nLanguage: {lang}\nType /disconnect to end the session."
     elif c.get("manually_busy"):
@@ -976,7 +982,7 @@ async def admin_list_counselors(update: Update, context: ContextTypes.DEFAULT_TY
         lines = []
         for c in counselors:
             status = "🟢 Available" if (c.get("available") and not c.get("manually_busy")) else ("🟡 Connected" if c.get("current_user_id") else "🔴 Busy")
-            gender = c.get("sex") or "Not set"
+            gender = (c.get("sex") or "Not set").capitalize()
             lines.append(f"ID: {c['user_id']} | Sex: {gender} | Status: {status}")
             
         await update.message.reply_text("\n".join(lines))
@@ -1098,7 +1104,7 @@ async def admin_add_counselor_sex(update: Update, context: ContextTypes.DEFAULT_
         return ConversationHandler.END
 
     c_data = {
-        "sex": text,
+        "sex": text.lower(),
         "available": True,
         "manually_busy": False,
         "current_user_id": None
