@@ -62,7 +62,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 COUNSELOR_IDS: list[int] = [
     439115108,
     2034041406,
-    6989476938,
     # Add additional counselor IDs here
 ]
 
@@ -101,7 +100,7 @@ USER_KEYBOARD = ReplyKeyboardMarkup(
         ["Stop Counseling", "Chat History"]
     ],
     resize_keyboard=True,
-    persistent=True
+    is_persistent=True
 )
 
 ADMIN_KEYBOARD = ReplyKeyboardMarkup(
@@ -112,7 +111,7 @@ ADMIN_KEYBOARD = ReplyKeyboardMarkup(
         ["❌ Close Admin Panel"]
     ],
     resize_keyboard=True,
-    persistent=True
+    is_persistent=True
 )
 
 # ─── TOPIC OPTIONS (bilingual) ────────────────────────────────────────────────
