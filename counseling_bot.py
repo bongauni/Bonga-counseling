@@ -60,9 +60,10 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Counselor list (hardcoded list for immediate authentication matching)
 COUNSELOR_IDS: list[int] = [
-    439115108,
-    2034041406,
     6989476938,
+    2034041406,
+    439115108,
+    
     # Add additional counselor IDs here
 ]
 
