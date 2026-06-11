@@ -63,6 +63,7 @@ COUNSELOR_IDS: list[int] = [
     6989476938,
     2034041406,
     439115108,
+    6740750286,
     
     # Add additional counselor IDs here
 ]
